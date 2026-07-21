@@ -18,7 +18,11 @@ package com.android.quickstep
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.annotation.ElapsedRealtimeLong
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.os.UserHandle
+import android.provider.Settings
 import android.graphics.PointF
 import android.os.Trace
 import android.util.Log
@@ -55,6 +59,7 @@ import com.android.quickstep.OverviewCommandHelper.CommandType.SHOW_ALT_TAB
 import com.android.quickstep.OverviewCommandHelper.CommandType.TOGGLE
 import com.android.quickstep.OverviewCommandHelper.CommandType.TOGGLE_OVERVIEW_PREVIOUS
 import com.android.quickstep.OverviewCommandHelper.CommandType.TOGGLE_WITH_FOCUS
+import com.android.launcher3.dagger.ApplicationContext
 import com.android.quickstep.dagger.SysUIConnectionSingleton
 import com.android.quickstep.fallback.RecentsState
 import com.android.quickstep.fallback.toRecentsState
@@ -86,6 +91,7 @@ import kotlinx.coroutines.withTimeout
 class OverviewCommandHelper
 @Inject
 constructor(
+    @ApplicationContext private val context: Context,
     private val touchInteractionHandler: Provider<TouchInteractionHandler>,
     private val overviewComponentObserver: OverviewComponentObserver,
     private val dispatcherProvider: DispatcherProvider,
@@ -131,6 +137,15 @@ constructor(
         displayId: Int = DEFAULT_DISPLAY,
         isLastOfBatch: Boolean = true,
     ): CommandInfo? {
+        // IchthysOS recents style (System setting recents_type): 1 = Classic (7.1.1-style
+        // vertical card-stack recents handled by SystemUI's LegacyRecentsActivity), anything
+        // else = Stock (Quickstep overview). Only short-circuit to legacy for Classic; for
+        // Stock fall through to the normal Quickstep overview command flow below. (Previously
+        // this was unconditional, so "Stock" also launched the classic activity.)
+        if (type == TOGGLE && isClassicRecentsSelected()) {
+            launchLegacyRecents()
+            return null
+        }
         if (commandQueue.size >= MAX_QUEUE_SIZE) {
             OverviewCommandHelperProtoLogProxy.logCommandQueueFull(type, commandQueue)
             return null
@@ -155,6 +170,32 @@ constructor(
         }
 
         return command
+    }
+
+    // recents_type: 1 = Classic (legacy vertical list), else Stock (Quickstep overview).
+    private fun isClassicRecentsSelected(): Boolean =
+        Settings.System.getIntForUser(
+            context.contentResolver,
+            "recents_type",
+            0,
+            UserHandle.USER_CURRENT,
+        ) == 1
+
+    private fun launchLegacyRecents() {
+        try {
+            context.startActivity(
+                Intent()
+                    .setComponent(
+                        ComponentName(
+                            "com.android.systemui",
+                            "com.android.systemui.recents.LegacyRecentsActivity",
+                        )
+                    )
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (e: Exception) {
+            Log.e("OverviewCommandHelper", "Failed to launch legacy recents", e)
+        }
     }
 
     @BinderThread
