@@ -57,6 +57,9 @@ filegroup {
     srcs: [
         "quickstep/src/**/*.kt",
         "quickstep/src/**/*.java",
+        // IchthysOS: real Slim Recents (frameworks/opt/slimrecent) is a Quickstep component
+        // (uses launcher3.R, SystemUiProxy, split utils), compiled into the quickstep build.
+        ":SlimRecents-srcs",
     ],
     device_common_srcs: [
         ":launcher-quickstep-processed-protolog-src",
@@ -400,6 +403,8 @@ android_library {
     srcs: [],
     resource_dirs: [
         "quickstep/res",
+        // IchthysOS: real Slim Recents resources (frameworks/opt/slimrecent/res, symlinked).
+        "res-slimrecent",
     ],
     libs: [
         "framework-statsd.stubs.module_lib",

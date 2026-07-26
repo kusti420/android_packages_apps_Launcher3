@@ -44,9 +44,11 @@ import android.content.IIntentReceiver;
 import android.content.IIntentSender;
 import android.content.Intent;
 import android.hardware.display.DisplayManager;
+import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.IBinder;
 import android.os.Trace;
 import android.provider.Settings;
@@ -344,6 +346,22 @@ public class TaskbarManagerImpl {
                 getTaskbarUiThread(),
                 v -> onSettingChanged(v, TaskbarActivityContext::isInKidsMode));
         cleanupTasks.addCloseable(getTaskbarUiThread(), navBarKidsModeSafeCloseable);
+
+        // IchthysOS: rebuild the taskbar nav buttons when the selected navbar style changes so the
+        // new glyphs apply immediately (no reboot). The crDroidSettings navbar picker writes the
+        // chosen overlay package to Settings.System "navbar_style_pkg"; since that's a String, a
+        // raw ContentObserver is used rather than SettingsCache (which reads booleans/ints).
+        final ContentObserver navbarStyleObserver =
+                new ContentObserver(new Handler(Looper.getMainLooper())) {
+                    @Override
+                    public void onChange(boolean selfChange) {
+                        getTaskbarUiThread().execute(TaskbarManagerImpl.this::recreateTaskbars);
+                    }
+                };
+        mBaseContext.getContentResolver().registerContentObserver(
+                Settings.System.getUriFor("navbar_style_pkg"), false, navbarStyleObserver);
+        cleanupTasks.addTask(getTaskbarUiThread(), () ->
+                mBaseContext.getContentResolver().unregisterContentObserver(navbarStyleObserver));
 
         SimpleBroadcastReceiver shutdownReceiver = new SimpleBroadcastReceiver(
                 mBaseContext,

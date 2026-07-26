@@ -77,7 +77,9 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemProperties;
+import android.os.UserHandle;
 import android.provider.Settings;
+import android.util.Log;
 import android.util.Property;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -1024,12 +1026,52 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
                 R.layout.taskbar_nav_button);
     }
 
+    /**
+     * IchthysOS: the 3-button navigation bar is rendered by this Launcher taskbar, NOT SystemUI's
+     * NavigationBarView (taskbar-navbar unification is on), so the crDroid navbar-style overlays
+     * (category android.theme.customization.navbar, target com.android.systemui) must be applied
+     * here. Loads the selected style's glyph by name from the enabled overlay package. The chosen
+     * package is written to Settings.System "navbar_style_pkg" by the crDroidSettings navbar picker.
+     * Returns null (caller keeps the built-in ic_sysbar_* glyph) for the Default style or on failure.
+     */
+    public static Drawable getStyledNavIcon(Context context, String name) {
+        try {
+            final String pkg = Settings.System.getStringForUser(context.getContentResolver(),
+                    "navbar_style_pkg", UserHandle.USER_CURRENT);
+            if (pkg == null || pkg.isEmpty() || "com.android.systemui".equals(pkg)) {
+                return null;
+            }
+            final Resources res = context.getPackageManager().getResourcesForApplication(pkg);
+            final int resId = res.getIdentifier(name, "drawable", pkg);
+            Log.i("IchthysNavbar", "getStyledNavIcon " + name + " pkg=" + pkg
+                    + " found=" + (resId != 0));
+            if (resId != 0) {
+                return res.getDrawable(resId, null /* theme */);
+            }
+        } catch (Exception e) {
+            Log.w("IchthysNavbar", "getStyledNavIcon failed for " + name, e);
+        }
+        return null;
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     private ImageView addButton(@DrawableRes int drawableId, @TaskbarButton int buttonType,
             ViewGroup parent, TaskbarNavButtonController navButtonController, @IdRes int id,
             @LayoutRes int layoutId) {
         ImageView buttonView = addButton(parent, id, layoutId);
         buttonView.setImageResource(drawableId);
+        // IchthysOS: override the primary nav glyphs (back/home/recent) with the selected navbar
+        // style overlay, if one is set. Back is re-set again by AbstractNavButtonLayoutter.
+        final String ichStyleName =
+                drawableId == R.drawable.ic_sysbar_home ? "ic_sysbar_home"
+                        : drawableId == R.drawable.ic_sysbar_recent ? "ic_sysbar_recent"
+                        : drawableId == R.drawable.ic_sysbar_back ? "ic_sysbar_back" : null;
+        if (ichStyleName != null) {
+            final Drawable ichStyled = getStyledNavIcon(buttonView.getContext(), ichStyleName);
+            if (ichStyled != null) {
+                buttonView.setImageDrawable(ichStyled);
+            }
+        }
         buttonView.setContentDescription(parent.getContext().getString(
                 navButtonController.getButtonContentDescription(buttonType)));
         if (buttonType == BUTTON_BACK) {
