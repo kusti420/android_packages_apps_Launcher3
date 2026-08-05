@@ -104,6 +104,9 @@ public class RecentsAnimationDeviceState implements ExclusionListener {
 
     public static final int RESET_TO_DEFAULT_GESTURAL_HEIGHT = -1;
 
+    /** IchthysOS: no assistant on this build; see {@link #canTriggerAssistantAction}. */
+    private static final boolean ASSIST_DISABLED = true;
+
     static final String SUPPORT_ONE_HANDED_MODE = "ro.support_one_handed_mode";
 
     // TODO: Move to quickstep contract
@@ -611,6 +614,13 @@ public class RecentsAnimationDeviceState implements ExclusionListener {
      * @return whether the given motion event can trigger the assistant over the current task.
      */
     public boolean canTriggerAssistantAction(MotionEvent ev) {
+        // IchthysOS: no assistant on this build. This is the single gate InputConsumerUtils uses
+        // before creating an AssistantInputConsumer, so returning false here means the
+        // bottom-corner swipe can never be intercepted, independent of whether an assistant app
+        // is installed (mAssistantAvailable) or of the SysUI state flags.
+        if (ASSIST_DISABLED) {
+            return false;
+        }
         return mAssistantAvailable
                 && !QuickStepContract.isAssistantGestureDisabled(getSysuiStateFlags())
                 && mRotationTouchHelper.touchInAssistantRegion(ev)

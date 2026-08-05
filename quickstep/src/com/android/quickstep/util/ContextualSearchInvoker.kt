@@ -148,6 +148,15 @@ internal constructor(
      * @return true if availability checks were successful, false otherwise.
      */
     fun runContextualSearchInvocationChecksAndLogFailures(): Boolean {
+        // IchthysOS: Contextual Search ("Circle to Search") is an assistant surface, so it is
+        // disabled. This is the precondition check every entry point runs first
+        // (NavHandleLongPressHandler for long-press-nav-handle, show() for long-press-home and
+        // for TISBinder's SysUI overrides), so failing it here means the nav handle long press
+        // never even vibrates or animates, let alone invokes anything.
+        if (ASSIST_DISABLED) {
+            Log.i(TAG, "Contextual Search invocation failed: assistant disabled on this build")
+            return false
+        }
         if (
             contextualSearchManager == null ||
                 !context.packageManager.hasSystemFeature(FEATURE_CONTEXTUAL_SEARCH)
@@ -210,6 +219,14 @@ internal constructor(
         withHaptic: Boolean = false,
         config: ContextualSearchConfig? = null,
     ): Boolean {
+        // IchthysOS: belt and braces. runContextualSearchInvocationChecksAndLogFailures() already
+        // fails, but this is the only method that actually calls
+        // ContextualSearchManager.startContextualSearch(), and the *Unchecked* entry points are
+        // public, so gate it here too. Before the haptic, so nothing buzzes either.
+        if (ASSIST_DISABLED) {
+            Log.i(TAG, "Contextual Search invocation skipped: assistant disabled on this build")
+            return false
+        }
         if (withHaptic && DeviceConfigWrapper.get().enableSearchHapticCommit) {
             contextualSearchHapticManager.vibrateForSearch()
         }
@@ -272,6 +289,14 @@ internal constructor(
 
     companion object {
         private const val TAG = "ContextualSearchInvoker"
+
+        /**
+         * IchthysOS: Contextual Search is an assistant surface and the user does not want one.
+         * Flip to false to restore stock behaviour. Deliberately a plain `val` and not a `const
+         * val`: a compile-time constant would make everything after the early returns
+         * statically unreachable and produce warnings on every gated call site.
+         */
+        private val ASSIST_DISABLED = true
         const val SHADE_EXPANDED_SYSUI_FLAGS =
             QuickStepContract.SYSUI_STATE_NOTIFICATION_PANEL_EXPANDED or
                 QuickStepContract.SYSUI_STATE_QUICK_SETTINGS_EXPANDED

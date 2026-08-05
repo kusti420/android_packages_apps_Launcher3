@@ -147,6 +147,11 @@ constructor(
                 1 -> { launchSystemUiRecents(
                         "com.android.systemui.recents.LegacyRecentsActivity"); return null }
                 2 -> { toggleSlimRecents(); return null }
+                // 3..8 are the card-list styles: AOSP 7.1.1 cascade, One UI grid / tilt stack /
+                // vertical list / slim list, and the Samsung Grace UX stack. They all share one
+                // activity, which reads recents_type itself to pick the layout.
+                in 3..8 -> { launchSystemUiRecents(
+                        "com.android.systemui.recents.oneui.OneUiRecentsActivity"); return null }
             }
         }
         if (commandQueue.size >= MAX_QUEUE_SIZE) {
@@ -176,7 +181,9 @@ constructor(
     }
 
     // recents_type: 0 = Stock (Quickstep overview), 1 = Classic (legacy vertical list),
-    // 2 = Slim (side-anchored panel).
+    // 2 = Slim (side-anchored panel), 3 = Cascade (AOSP 7.1.1), 4 = Grid (One UI),
+    // 5 = Tilt stack (One UI), 6 = Vertical list (One UI), 7 = Slim list (One UI),
+    // 8 = Samsung Grace UX stack.
     private fun recentsType(): Int =
         Settings.System.getIntForUser(
             context.contentResolver,

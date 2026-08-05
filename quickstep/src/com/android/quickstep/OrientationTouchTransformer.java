@@ -57,6 +57,9 @@ class OrientationTouchTransformer {
     private static final String TAG = "OrientationTouchTransformer";
     private static final boolean DEBUG = false;
 
+    /** IchthysOS: no assistant on this build; see {@link #updateAssistantRegions}. */
+    private static final boolean ASSIST_DISABLED = true;
+
     private static final int QUICKSTEP_ROTATION_UNINITIALIZED = -1;
 
     private final Map<CachedDisplayInfo, OrientationRectF> mSwipeTouchRegions =
@@ -289,6 +292,16 @@ class OrientationTouchTransformer {
     }
 
     private void updateAssistantRegions(OrientationRectF orientationRectF) {
+        // IchthysOS: no assistant on this build, so the bottom corners never claim an assist
+        // swipe. Leaving the rects empty (rather than only gating canTriggerAssistantAction()) is
+        // deliberate: it makes "dumpsys activity service TouchInteractionService" show
+        // mAssistantLeftRegion/mAssistantRightRegion as empty, which is the honest state, and it
+        // removes the claim even if some future code path consults the regions directly.
+        if (ASSIST_DISABLED) {
+            mAssistantLeftRegion.setEmpty();
+            mAssistantRightRegion.setEmpty();
+            return;
+        }
         int navbarHeight = getNavbarSize(ResourceUtils.NAVBAR_BOTTOM_GESTURE_SIZE);
         int assistantWidth = mResources.getDimensionPixelSize(R.dimen.gestures_assistant_width);
         float assistantHeight = Math.max(navbarHeight, mContractInfo.getWindowCornerRadius());
