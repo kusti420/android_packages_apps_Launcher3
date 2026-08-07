@@ -130,7 +130,15 @@ abstract class AbstractNavButtonLayoutter(
     }
 
     fun isFlipEnabledBySetting(): Boolean {
-        return SettingsCache.INSTANCE.get(navButtonContainer.context).getValue(NAVBAR_KEY_ORDER_URI)
+        // IchthysOS: default the nav button order to flipped (recents, home, back).
+        // Taskbar -- not NavigationBarView -- draws the nav bar, so this is the only place
+        // the default actually takes effect. SettingsCache.getValue() treats an unset key as
+        // false, so on a clean install / factory reset NAVIGATIONBAR_KEY_ORDER is null and the
+        // AOSP order was used. Read it directly with a default of 1 instead; the user's own
+        // choice still wins once written, and NavbarButtonsViewController keeps observing
+        // NAVIGATIONBAR_KEY_ORDER so a change still triggers a relayout.
+        return Settings.Secure.getInt(
+            navButtonContainer.context.contentResolver, NAVIGATIONBAR_KEY_ORDER, 1) != 0
     }
 
     /** For ordered layouts, this determines if the order of buttons should be flipped. */
