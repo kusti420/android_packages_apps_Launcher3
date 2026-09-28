@@ -62,7 +62,13 @@ abstract class AbstractNavButtonLayoutter(
 
     init {
         // setup back button drawable
-        if (backButton != null && backButton.resources != null) {
+        // IchthysOS navBar.style: a code-drawn back key (set by NavbarButtonsViewController) rotates
+        // itself from the drawable level, so keep it rather than wrapping it in a RotateDrawable.
+        if (
+            backButton != null &&
+                backButton.resources != null &&
+                backButton.drawable !is IchthysNavKeyDrawable
+        ) {
             val rotateDrawable = RotateDrawable()
             // IchthysOS: use the selected navbar-style back glyph (from the enabled overlay) if set.
             val ichStyledBack =

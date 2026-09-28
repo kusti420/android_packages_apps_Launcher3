@@ -360,6 +360,13 @@ public class TaskbarManagerImpl {
                 };
         mBaseContext.getContentResolver().registerContentObserver(
                 Settings.System.getUriFor("navbar_style_pkg"), false, navbarStyleObserver);
+        // IchthysOS navBar.style (Settings.Secure ichthys_navbar_style) plus the accent seed and
+        // mono font it draws with: rebuild so the code-drawn keys / ink bar / gesture handle
+        // follow the setting live.
+        for (Uri uri : com.android.launcher3.taskbar.navbutton.IchthysNavStyle.observedUris()) {
+            mBaseContext.getContentResolver().registerContentObserver(uri, false,
+                    navbarStyleObserver);
+        }
         cleanupTasks.addTask(getTaskbarUiThread(), () ->
                 mBaseContext.getContentResolver().unregisterContentObserver(navbarStyleObserver));
 

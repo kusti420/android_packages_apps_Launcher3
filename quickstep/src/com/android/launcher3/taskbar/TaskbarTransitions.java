@@ -16,9 +16,11 @@
 
 package com.android.launcher3.taskbar;
 
+import android.graphics.PorterDuff;
 import android.view.View;
 
 import com.android.launcher3.R;
+import com.android.launcher3.taskbar.navbutton.IchthysNavStyle;
 import com.android.launcher3.taskbar.navbutton.NearestTouchFrame;
 import com.android.systemui.shared.statusbar.phone.BarTransitions;
 
@@ -38,6 +40,10 @@ public class TaskbarTransitions extends BarTransitions implements
     private float mDarkIntensity;
 
     private final NearestTouchFrame mView;
+
+    // IchthysOS navBar.style key styles in the dark theme: the bar is forced opaque ink.
+    private boolean mIchthysInk;
+    private boolean mIchthysTinted;
 
     public TaskbarTransitions(TaskbarActivityContext context, NearestTouchFrame view) {
         super(view, R.drawable.nav_background);
@@ -59,6 +65,34 @@ public class TaskbarTransitions extends BarTransitions implements
         if (mContext.isPhoneButtonNavMode()) {
             mBarBackground.setOverrideAlpha(1);
         }
+    }
+
+    /**
+     * IchthysOS: force the opaque ink bar (navBar.style shoal/lattice/mono while the dark theme is
+     * on). Call before {@link #init()}; later calls re-apply the background immediately.
+     */
+    void setIchthysInk(boolean ink) {
+        if (mIchthysInk == ink) return;
+        mIchthysInk = ink;
+        applyModeBackground(-1, getMode(), false /* animate */);
+    }
+
+    @Override
+    protected void applyModeBackground(int oldMode, int newMode, boolean animate) {
+        if (mIchthysInk) {
+            oldMode = MODE_OPAQUE_DARK;
+            newMode = MODE_OPAQUE_DARK;
+            animate = false;
+            // The opaque-dark bar is black; SRC_IN recolours it to ink.
+            mBarBackground.setTint(IchthysNavStyle.INK);
+            mBarBackground.setTintMode(PorterDuff.Mode.SRC_IN);
+            mIchthysTinted = true;
+        } else if (mIchthysTinted) {
+            // The tint filter can't be removed once set; DST keeps the bar's own colour.
+            mBarBackground.setTintMode(PorterDuff.Mode.DST);
+            mIchthysTinted = false;
+        }
+        super.applyModeBackground(oldMode, newMode, animate);
     }
 
     void setWallpaperVisibility(boolean visible) {
@@ -128,6 +162,7 @@ public class TaskbarTransitions extends BarTransitions implements
         pw.println(prefix + "\tmWallpaperVisible: " + mWallpaperVisible);
         pw.println(prefix + "\tmLightsOut: " + mLightsOut);
         pw.println(prefix + "\tmAutoDim: " + mAutoDim);
+        pw.println(prefix + "\tmIchthysInk: " + mIchthysInk);
         pw.println(prefix + "\tbg overrideAlpha: " + mBarBackground.getOverrideAlpha());
         pw.println(prefix + "\tbg color: " + mBarBackground.getColor());
         pw.println(prefix + "\tbg frame: " + mBarBackground.getFrame());

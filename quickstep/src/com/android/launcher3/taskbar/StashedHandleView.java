@@ -23,6 +23,8 @@ import android.animation.ObjectAnimator;
 import android.animation.PropertyValuesHolder;
 import android.annotation.Nullable;
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.View;
@@ -32,6 +34,7 @@ import androidx.core.content.ContextCompat;
 
 import com.android.launcher3.LauncherAnimUtils;
 import com.android.launcher3.R;
+import com.android.launcher3.taskbar.navbutton.IchthysNavStyle;
 
 /**
  * View to render a handle that changes color based on the background to ensure contrast. Used for
@@ -41,9 +44,15 @@ public class StashedHandleView extends View {
 
     private static final long COLOR_CHANGE_DURATION = 120;
 
-    private final @ColorInt int mStashedHandleLightColor;
-    private final @ColorInt int mStashedHandleDarkColor;
+    private @ColorInt int mStashedHandleLightColor;
+    private @ColorInt int mStashedHandleDarkColor;
     private final Rect mSampledRegion = new Rect();
+    // IchthysOS navBar.style = "gestures": the handle is a track (the background colour, clipped
+    // by the outline) with an accent segment drawn in the centre of mHandleBounds.
+    private boolean mIchthysGestures;
+    private @ColorInt int mIchthysAccent;
+    private final Rect mHandleBounds = new Rect();
+    private final Paint mIchthysPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final int[] mTmpArr = new int[2];
 
     private @Nullable ObjectAnimator mColorChangeAnim;
@@ -83,6 +92,48 @@ public class StashedHandleView extends View {
         mTmpArr[1] -= Math.round(getTranslationY());
         mSampledRegion.set(stashedHandleBounds);
         mSampledRegion.offset(mTmpArr[0], mTmpArr[1]);
+        if (!mHandleBounds.equals(stashedHandleBounds)) {
+            mHandleBounds.set(stashedHandleBounds);
+            if (mIchthysGestures) invalidate();
+        }
+    }
+
+    /**
+     * IchthysOS navBar.style "gestures": draw the handle as a track (ink/light track token, picked
+     * by the sampled region like the stock colours) with a 22dp {@code accent} centre segment.
+     */
+    public void setIchthysGestures(boolean enabled, @ColorInt int accent) {
+        mIchthysGestures = enabled;
+        mIchthysAccent = accent;
+        if (enabled) {
+            mStashedHandleLightColor = IchthysNavStyle.D_TRACK;
+            mStashedHandleDarkColor = IchthysNavStyle.L_TRACK;
+        } else {
+            mStashedHandleLightColor = ContextCompat.getColor(getContext(),
+                    R.color.taskbar_stashed_handle_light_color);
+            mStashedHandleDarkColor = ContextCompat.getColor(getContext(),
+                    R.color.taskbar_stashed_handle_dark_color);
+        }
+        // Re-apply the colour for the current region with the new palette.
+        final Boolean regionDark = mIsRegionDark;
+        mIsRegionDark = null;
+        updateHandleColor(regionDark == null || regionDark, false /* animate */);
+        invalidate();
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        if (!mIchthysGestures || mHandleBounds.isEmpty()) {
+            return;
+        }
+        final float dp = getResources().getDisplayMetrics().density;
+        final float cx = mHandleBounds.exactCenterX();
+        final float half = Math.min(11 * dp, mHandleBounds.width() / 2f);
+        final float radius = mHandleBounds.height() / 2f;
+        mIchthysPaint.setColor(mIchthysAccent);
+        canvas.drawRoundRect(cx - half, mHandleBounds.top, cx + half, mHandleBounds.bottom,
+                radius, radius, mIchthysPaint);
     }
 
     public Rect getSampledRegion() {

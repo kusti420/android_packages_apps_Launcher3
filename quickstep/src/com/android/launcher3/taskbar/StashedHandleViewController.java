@@ -45,6 +45,7 @@ import com.android.launcher3.R;
 import com.android.launcher3.anim.AnimatedFloat;
 import com.android.launcher3.anim.RevealOutlineAnimation;
 import com.android.launcher3.anim.RoundedRectRevealOutlineProvider;
+import com.android.launcher3.taskbar.navbutton.IchthysNavStyle;
 import com.android.launcher3.util.Executors;
 import com.android.launcher3.util.MultiValueAlpha;
 import com.android.quickstep.NavHandle;
@@ -90,7 +91,7 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
     private final LauncherPrefs mPrefs;
     private final StashedHandleView mStashedHandleView;
     private int mStashedHandleWidth;
-    private final int mStashedHandleHeight;
+    private int mStashedHandleHeight;
     @Nullable
     private RegionSamplingHelper mRegionSamplingHelper;
     private final MultiValueAlpha mTaskbarStashedHandleAlpha;
@@ -148,6 +149,15 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
             mTaskbarSize = deviceProfile.getTaskbarProfile().getHeight();
             mStashedHandleWidth = resources
                     .getDimensionPixelSize(R.dimen.taskbar_stashed_handle_width);
+        }
+        // IchthysOS navBar.style = "gestures": 108 x 5 dp track with an accent centre segment.
+        final boolean ichthysGestures = activity.isPhoneGestureNavMode()
+                && IchthysNavStyle.read(activity) == IchthysNavStyle.GESTURES;
+        if (ichthysGestures) {
+            final float density = resources.getDisplayMetrics().density;
+            mStashedHandleWidth = Math.round(108 * density);
+            mStashedHandleHeight = Math.round(5 * density);
+            mStashedHandleView.setIchthysGestures(true, IchthysNavStyle.accent(activity));
         }
         int taskbarBottomMargin = deviceProfile.getTaskbarProfile().getBottomMargin();
         mStashedHandleView.getLayoutParams().height = mTaskbarSize + taskbarBottomMargin;

@@ -107,6 +107,8 @@ import com.android.launcher3.anim.AlphaUpdateListener;
 import com.android.launcher3.anim.AnimatedFloat;
 import com.android.launcher3.taskbar.TaskbarNavButtonController.TaskbarButton;
 import com.android.launcher3.taskbar.bubbles.BubbleBarController;
+import com.android.launcher3.taskbar.navbutton.IchthysNavKeyDrawable;
+import com.android.launcher3.taskbar.navbutton.IchthysNavStyle;
 import com.android.launcher3.taskbar.navbutton.NavButtonLayoutFactory;
 import com.android.launcher3.taskbar.navbutton.NavButtonLayoutFactory.NavButtonLayoutter;
 import com.android.launcher3.taskbar.navbutton.NearestTouchFrame;
@@ -280,6 +282,17 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
 
     private final boolean mIsUserUnlocked;
 
+    // IchthysOS navBar.style (Settings.Secure ichthys_navbar_style). Read once per taskbar
+    // instance; TaskbarManagerImpl recreates the taskbars when the style / accent / font change,
+    // and dark-theme changes recreate them through the configuration change.
+    // mIchthysKeys: code-drawn back/home/recents keys (shoal/lattice/mono, phone 3-button).
+    // mIchthysInk: additionally force the opaque ink bar with light keys (dark theme).
+    private boolean mIchthysKeys;
+    private boolean mIchthysInk;
+    private int mIchthysStyle = IchthysNavStyle.STOCK;
+    private int mIchthysAccent;
+    private @Nullable android.graphics.Typeface mIchthysMono;
+
     public NavbarButtonsViewController(TaskbarActivityContext context,
             @Nullable Context navigationBarPanelContext, NearestTouchFrame navButtonsView,
             Handler handler, TaskbarUiState taskbarUiState) {
@@ -328,6 +341,7 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
     protected void setupController() {
         final boolean isThreeButtonNav = mContext.isThreeButtonNav();
         final boolean isPhoneMode = mContext.isPhoneMode();
+        updateIchthysStyle();
         DeviceProfile deviceProfile = mContext.getDeviceProfile();
         Resources resources = mContext.getResources();
 
@@ -437,6 +451,7 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
         mControllers.rotationButtonController.setRotationButton(mFloatingRotationButton,
                 mRotationButtonListener);
         if (isPhoneMode) {
+            mTaskbarTransitions.setIchthysInk(mIchthysInk);
             mTaskbarTransitions.init();
         }
 
@@ -978,8 +993,51 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
      * {@link #mTaskbarNavButtonDarkIntensity} value piped in from Framework.
      */
     private int getSysUiIconColorOnHome(ArgbEvaluator argbEvaluator) {
-        return (int) argbEvaluator.evaluate(getTaskbarNavButtonDarkIntensity().value,
+        return (int) argbEvaluator.evaluate(getEffectiveNavButtonDarkIntensity(),
                 mLightIconColorOnWorkspace, mDarkIconColorOnWorkspace);
+    }
+
+    /**
+     * The nav-button dark intensity actually applied: IchthysOS forces light keys (0) while the
+     * bar is painted opaque ink, whatever the app behind asked for.
+     */
+    private float getEffectiveNavButtonDarkIntensity() {
+        return mIchthysInk ? 0f : getTaskbarNavButtonDarkIntensity().value;
+    }
+
+    /**
+     * IchthysOS: read navBar.style and decide whether this taskbar draws the code-drawn keys and
+     * the ink bar. Only the phone 3-button nav bar is restyled (large-screen taskbar keeps stock).
+     */
+    private void updateIchthysStyle() {
+        mIchthysStyle = IchthysNavStyle.read(mContext);
+        mIchthysKeys = IchthysNavStyle.isKeyStyle(mIchthysStyle) && mContext.isPhoneButtonNavMode();
+        // The owner prefers the stock see-through bar: the styled keys follow the normal
+        // light/dark key tint over whatever is behind them, no forced ink background.
+        mIchthysInk = false;
+        if (mIchthysKeys) {
+            mIchthysAccent = IchthysNavStyle.accent(mContext);
+            mIchthysMono = mIchthysStyle == IchthysNavStyle.MONO
+                    ? IchthysNavStyle.monoTypeface(mContext) : null;
+        }
+    }
+
+    /** IchthysOS: the code-drawn key for {@code buttonType}, or null if it isn't restyled. */
+    @Nullable
+    private IchthysNavKeyDrawable createIchthysKey(Context context, @TaskbarButton int buttonType) {
+        if (!mIchthysKeys) return null;
+        final int key;
+        if (buttonType == BUTTON_BACK) {
+            key = IchthysNavKeyDrawable.KEY_BACK;
+        } else if (buttonType == BUTTON_HOME) {
+            key = IchthysNavKeyDrawable.KEY_HOME;
+        } else if (buttonType == BUTTON_RECENTS) {
+            key = IchthysNavKeyDrawable.KEY_RECENTS;
+        } else {
+            return null;
+        }
+        return new IchthysNavKeyDrawable(context, mIchthysStyle, key, mIchthysAccent,
+                mIchthysMono);
     }
 
     /**
@@ -1000,12 +1058,20 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
      * Iteratively sets button colors for each button in {@link #mAllButtons}.
      */
     private void applyButtonColors(int iconColor) {
+        final float darkIntensity = getEffectiveNavButtonDarkIntensity();
         for (ImageView button : mAllButtons) {
-            button.setImageTintList(ColorStateList.valueOf(iconColor));
+            if (button.getDrawable() instanceof IchthysNavKeyDrawable ichthysKey) {
+                // IchthysOS: multi-coloured key art; blend its tokens instead of tinting.
+                if (button.getImageTintList() != null) {
+                    button.setImageTintList(null);
+                }
+                ichthysKey.setDarkIntensity(darkIntensity);
+            } else {
+                button.setImageTintList(ColorStateList.valueOf(iconColor));
+            }
             Drawable background = button.getBackground();
             if (background instanceof KeyButtonRipple) {
-                ((KeyButtonRipple) background).setDarkIntensity(
-                        getTaskbarNavButtonDarkIntensity().value);
+                ((KeyButtonRipple) background).setDarkIntensity(darkIntensity);
             }
         }
     }
@@ -1016,7 +1082,7 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
     private void onDarkIntensityChanged() {
         updateNavButtonColor();
         if (mContext.isPhoneMode()) {
-            mTaskbarTransitions.onDarkIntensityChanged(getTaskbarNavButtonDarkIntensity().value);
+            mTaskbarTransitions.onDarkIntensityChanged(getEffectiveNavButtonDarkIntensity());
         }
     }
 
@@ -1066,7 +1132,16 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
                 drawableId == R.drawable.ic_sysbar_home ? "ic_sysbar_home"
                         : drawableId == R.drawable.ic_sysbar_recent ? "ic_sysbar_recent"
                         : drawableId == R.drawable.ic_sysbar_back ? "ic_sysbar_back" : null;
-        if (ichStyleName != null) {
+        final IchthysNavKeyDrawable ichthysKey = createIchthysKey(buttonView.getContext(),
+                buttonType);
+        if (ichthysKey != null) {
+            // IchthysOS navBar.style: code-drawn keys win over stock and overlay glyphs. The back
+            // key handles the IME-dismiss rotation itself (drawable level), so
+            // AbstractNavButtonLayoutter keeps it instead of wrapping a RotateDrawable.
+            buttonView.setImageDrawable(ichthysKey);
+            buttonView.setImageTintList(null);
+            ichthysKey.setDarkIntensity(getEffectiveNavButtonDarkIntensity());
+        } else if (ichStyleName != null) {
             final Drawable ichStyled = getStyledNavIcon(buttonView.getContext(), ichStyleName);
             if (ichStyled != null) {
                 buttonView.setImageDrawable(ichStyled);
@@ -1374,6 +1449,8 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
                 + mTaskbarNavButtonTranslationYForInAppDisplay.value);
         pw.println(prefix + "\t\tmTaskbarNavButtonDarkIntensity="
                 + mTaskbarNavButtonDarkIntensity.value);
+        pw.println(prefix + "\t\tmIchthysStyle=" + mIchthysStyle
+                + " mIchthysKeys=" + mIchthysKeys + " mIchthysInk=" + mIchthysInk);
         pw.println(prefix + "\t\tmNavButtonInAppDisplayProgressForSysui="
                 + mNavButtonInAppDisplayProgressForSysui.value);
         pw.println(prefix + "\t\tmNavButtonInAppDisplayProgressForIme="
