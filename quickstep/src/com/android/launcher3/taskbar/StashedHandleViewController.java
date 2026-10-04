@@ -157,7 +157,7 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
             final float density = resources.getDisplayMetrics().density;
             mStashedHandleWidth = Math.round(108 * density);
             mStashedHandleHeight = Math.round(5 * density);
-            mStashedHandleView.setIchthysGestures(true, IchthysNavStyle.accent(activity));
+            mStashedHandleView.setIchthysGestures(true, IchthysNavStyle.tokens(activity));
         }
         int taskbarBottomMargin = deviceProfile.getTaskbarProfile().getBottomMargin();
         mStashedHandleView.getLayoutParams().height = mTaskbarSize + taskbarBottomMargin;

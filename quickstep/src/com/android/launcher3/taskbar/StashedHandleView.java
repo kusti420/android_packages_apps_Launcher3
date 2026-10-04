@@ -99,15 +99,16 @@ public class StashedHandleView extends View {
     }
 
     /**
-     * IchthysOS navBar.style "gestures": draw the handle as a track (ink/light track token, picked
-     * by the sampled region like the stock colours) with a 22dp {@code accent} centre segment.
+     * IchthysOS navBar.style "gestures": draw the handle as a track (the Shoal track token's dark /
+     * light leaf, picked by the sampled region like the stock colours) with a 22dp accent centre
+     * segment.
      */
-    public void setIchthysGestures(boolean enabled, @ColorInt int accent) {
-        mIchthysGestures = enabled;
-        mIchthysAccent = accent;
-        if (enabled) {
-            mStashedHandleLightColor = IchthysNavStyle.D_TRACK;
-            mStashedHandleDarkColor = IchthysNavStyle.L_TRACK;
+    public void setIchthysGestures(boolean enabled, @Nullable IchthysNavStyle.Tokens tokens) {
+        mIchthysGestures = enabled && tokens != null;
+        if (mIchthysGestures) {
+            mIchthysAccent = tokens.accent;
+            mStashedHandleLightColor = tokens.trackDark;
+            mStashedHandleDarkColor = tokens.trackLight;
         } else {
             mStashedHandleLightColor = ContextCompat.getColor(getContext(),
                     R.color.taskbar_stashed_handle_light_color);

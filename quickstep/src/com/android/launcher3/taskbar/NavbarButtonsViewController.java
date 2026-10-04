@@ -77,9 +77,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemProperties;
-import android.os.UserHandle;
 import android.provider.Settings;
-import android.util.Log;
 import android.util.Property;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -282,15 +280,16 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
 
     private final boolean mIsUserUnlocked;
 
-    // IchthysOS navBar.style (Settings.Secure ichthys_navbar_style). Read once per taskbar
-    // instance; TaskbarManagerImpl recreates the taskbars when the style / accent / font change,
-    // and dark-theme changes recreate them through the configuration change.
+    // IchthysOS navBar.style (Settings.Secure ichthys_navbar_style), the only navbar style system.
+    // Read once per taskbar instance; TaskbarManagerImpl recreates the taskbars when the style /
+    // accent / font change, and dark-theme or palette-overlay changes recreate them through the
+    // configuration change.
     // mIchthysKeys: code-drawn back/home/recents keys (shoal/lattice/mono, phone 3-button).
     // mIchthysInk: additionally force the opaque ink bar with light keys (dark theme).
     private boolean mIchthysKeys;
     private boolean mIchthysInk;
     private int mIchthysStyle = IchthysNavStyle.STOCK;
-    private int mIchthysAccent;
+    private @Nullable IchthysNavStyle.Tokens mIchthysTokens;
     private @Nullable android.graphics.Typeface mIchthysMono;
 
     public NavbarButtonsViewController(TaskbarActivityContext context,
@@ -1016,7 +1015,7 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
         // light/dark key tint over whatever is behind them, no forced ink background.
         mIchthysInk = false;
         if (mIchthysKeys) {
-            mIchthysAccent = IchthysNavStyle.accent(mContext);
+            mIchthysTokens = IchthysNavStyle.tokens(mContext);
             mIchthysMono = mIchthysStyle == IchthysNavStyle.MONO
                     ? IchthysNavStyle.monoTypeface(mContext) : null;
         }
@@ -1025,7 +1024,7 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
     /** IchthysOS: the code-drawn key for {@code buttonType}, or null if it isn't restyled. */
     @Nullable
     private IchthysNavKeyDrawable createIchthysKey(Context context, @TaskbarButton int buttonType) {
-        if (!mIchthysKeys) return null;
+        if (!mIchthysKeys || mIchthysTokens == null) return null;
         final int key;
         if (buttonType == BUTTON_BACK) {
             key = IchthysNavKeyDrawable.KEY_BACK;
@@ -1036,7 +1035,7 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
         } else {
             return null;
         }
-        return new IchthysNavKeyDrawable(context, mIchthysStyle, key, mIchthysAccent,
+        return new IchthysNavKeyDrawable(context, mIchthysStyle, key, mIchthysTokens,
                 mIchthysMono);
     }
 
@@ -1092,60 +1091,22 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
                 R.layout.taskbar_nav_button);
     }
 
-    /**
-     * IchthysOS: the 3-button navigation bar is rendered by this Launcher taskbar, NOT SystemUI's
-     * NavigationBarView (taskbar-navbar unification is on), so the crDroid navbar-style overlays
-     * (category android.theme.customization.navbar, target com.android.systemui) must be applied
-     * here. Loads the selected style's glyph by name from the enabled overlay package. The chosen
-     * package is written to Settings.System "navbar_style_pkg" by the crDroidSettings navbar picker.
-     * Returns null (caller keeps the built-in ic_sysbar_* glyph) for the Default style or on failure.
-     */
-    public static Drawable getStyledNavIcon(Context context, String name) {
-        try {
-            final String pkg = Settings.System.getStringForUser(context.getContentResolver(),
-                    "navbar_style_pkg", UserHandle.USER_CURRENT);
-            if (pkg == null || pkg.isEmpty() || "com.android.systemui".equals(pkg)) {
-                return null;
-            }
-            final Resources res = context.getPackageManager().getResourcesForApplication(pkg);
-            final int resId = res.getIdentifier(name, "drawable", pkg);
-            Log.i("IchthysNavbar", "getStyledNavIcon " + name + " pkg=" + pkg
-                    + " found=" + (resId != 0));
-            if (resId != 0) {
-                return res.getDrawable(resId, null /* theme */);
-            }
-        } catch (Exception e) {
-            Log.w("IchthysNavbar", "getStyledNavIcon failed for " + name, e);
-        }
-        return null;
-    }
-
     @SuppressLint("ClickableViewAccessibility")
     private ImageView addButton(@DrawableRes int drawableId, @TaskbarButton int buttonType,
             ViewGroup parent, TaskbarNavButtonController navButtonController, @IdRes int id,
             @LayoutRes int layoutId) {
         ImageView buttonView = addButton(parent, id, layoutId);
         buttonView.setImageResource(drawableId);
-        // IchthysOS: override the primary nav glyphs (back/home/recent) with the selected navbar
-        // style overlay, if one is set. Back is re-set again by AbstractNavButtonLayoutter.
-        final String ichStyleName =
-                drawableId == R.drawable.ic_sysbar_home ? "ic_sysbar_home"
-                        : drawableId == R.drawable.ic_sysbar_recent ? "ic_sysbar_recent"
-                        : drawableId == R.drawable.ic_sysbar_back ? "ic_sysbar_back" : null;
         final IchthysNavKeyDrawable ichthysKey = createIchthysKey(buttonView.getContext(),
                 buttonType);
         if (ichthysKey != null) {
-            // IchthysOS navBar.style: code-drawn keys win over stock and overlay glyphs. The back
-            // key handles the IME-dismiss rotation itself (drawable level), so
-            // AbstractNavButtonLayoutter keeps it instead of wrapping a RotateDrawable.
+            // IchthysOS navBar.style: code-drawn keys replace the stock glyphs (the "stock" style
+            // keeps the AOSP drawable set above). The back key handles the IME-dismiss rotation
+            // itself (drawable level), so AbstractNavButtonLayoutter keeps it instead of wrapping
+            // a RotateDrawable.
             buttonView.setImageDrawable(ichthysKey);
             buttonView.setImageTintList(null);
             ichthysKey.setDarkIntensity(getEffectiveNavButtonDarkIntensity());
-        } else if (ichStyleName != null) {
-            final Drawable ichStyled = getStyledNavIcon(buttonView.getContext(), ichStyleName);
-            if (ichStyled != null) {
-                buttonView.setImageDrawable(ichStyled);
-            }
         }
         buttonView.setContentDescription(parent.getContext().getString(
                 navButtonController.getButtonContentDescription(buttonType)));

@@ -84,7 +84,7 @@ public class TaskbarTransitions extends BarTransitions implements
             newMode = MODE_OPAQUE_DARK;
             animate = false;
             // The opaque-dark bar is black; SRC_IN recolours it to ink.
-            mBarBackground.setTint(IchthysNavStyle.INK);
+            mBarBackground.setTint(IchthysNavStyle.tokens(mContext).ink);
             mBarBackground.setTintMode(PorterDuff.Mode.SRC_IN);
             mIchthysTinted = true;
         } else if (mIchthysTinted) {

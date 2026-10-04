@@ -70,16 +70,7 @@ abstract class AbstractNavButtonLayoutter(
                 backButton.drawable !is IchthysNavKeyDrawable
         ) {
             val rotateDrawable = RotateDrawable()
-            // IchthysOS: use the selected navbar-style back glyph (from the enabled overlay) if set.
-            val ichStyledBack =
-                backButton.context?.let {
-                    com.android.launcher3.taskbar.NavbarButtonsViewController.getStyledNavIcon(
-                        it,
-                        "ic_sysbar_back",
-                    )
-                }
-            rotateDrawable.drawable =
-                ichStyledBack ?: backButton.context?.getDrawable(R.drawable.ic_sysbar_back)
+            rotateDrawable.drawable = backButton.context?.getDrawable(R.drawable.ic_sysbar_back)
             rotateDrawable.fromDegrees = 0f
             rotateDrawable.toDegrees = if (Utilities.isRtl(backButton.resources)) 90f else -90f
             backButton.setImageDrawable(rotateDrawable)

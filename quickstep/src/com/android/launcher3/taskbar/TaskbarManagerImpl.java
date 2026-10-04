@@ -347,10 +347,10 @@ public class TaskbarManagerImpl {
                 v -> onSettingChanged(v, TaskbarActivityContext::isInKidsMode));
         cleanupTasks.addCloseable(getTaskbarUiThread(), navBarKidsModeSafeCloseable);
 
-        // IchthysOS: rebuild the taskbar nav buttons when the selected navbar style changes so the
-        // new glyphs apply immediately (no reboot). The crDroidSettings navbar picker writes the
-        // chosen overlay package to Settings.System "navbar_style_pkg"; since that's a String, a
-        // raw ContentObserver is used rather than SettingsCache (which reads booleans/ints).
+        // IchthysOS navBar.style (Settings.Secure ichthys_navbar_style) plus the accent seed and
+        // mono font it draws with: rebuild the taskbars so the code-drawn keys / ink bar / gesture
+        // handle follow the setting live (no reboot). These are Strings, so a raw ContentObserver
+        // is used rather than SettingsCache (which reads booleans/ints).
         final ContentObserver navbarStyleObserver =
                 new ContentObserver(new Handler(Looper.getMainLooper())) {
                     @Override
@@ -358,11 +358,6 @@ public class TaskbarManagerImpl {
                         getTaskbarUiThread().execute(TaskbarManagerImpl.this::recreateTaskbars);
                     }
                 };
-        mBaseContext.getContentResolver().registerContentObserver(
-                Settings.System.getUriFor("navbar_style_pkg"), false, navbarStyleObserver);
-        // IchthysOS navBar.style (Settings.Secure ichthys_navbar_style) plus the accent seed and
-        // mono font it draws with: rebuild so the code-drawn keys / ink bar / gesture handle
-        // follow the setting live.
         for (Uri uri : com.android.launcher3.taskbar.navbutton.IchthysNavStyle.observedUris()) {
             mBaseContext.getContentResolver().registerContentObserver(uri, false,
                     navbarStyleObserver);
