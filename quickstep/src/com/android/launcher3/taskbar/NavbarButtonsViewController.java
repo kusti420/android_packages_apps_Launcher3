@@ -1107,6 +1107,17 @@ public class NavbarButtonsViewController implements TaskbarControllers.LoggableT
             buttonView.setImageDrawable(ichthysKey);
             buttonView.setImageTintList(null);
             ichthysKey.setDarkIntensity(getEffectiveNavButtonDarkIntensity());
+        } else {
+            // IchthysOS: the stock style with a crDroid icon pack (ichthys_navbar_icons). The
+            // pack's glyphs are white vectors, tinted like the stock ones.
+            final String key = buttonType == BUTTON_BACK ? "back"
+                    : buttonType == BUTTON_HOME ? "home"
+                    : buttonType == BUTTON_RECENTS ? "recent" : null;
+            final android.graphics.drawable.Drawable packIcon = key == null ? null
+                    : IchthysNavStyle.stockIcon(buttonView.getContext(), key);
+            if (packIcon != null) {
+                buttonView.setImageDrawable(packIcon);
+            }
         }
         buttonView.setContentDescription(parent.getContext().getString(
                 navButtonController.getButtonContentDescription(buttonType)));
