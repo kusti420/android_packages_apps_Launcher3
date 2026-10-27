@@ -845,6 +845,11 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
                 mSystemUiProxy.onKeyEvent(KeyEvent.KEYCODE_SLEEP, mDisplayId);
                 return true;
             case ACTION_LAST_APP:
+                // IchthysOS: Slim Recents loads asynchronously, so the double toggle below just
+                // leaves its panel open; it switches directly instead.
+                if (mCallbacks.onSwitchToLastApp(mDisplayId)) {
+                    return true;
+                }
                 // Two overview toggles in a row is exactly the "double tap recents" sequence
                 // OverviewCommandHelper keeps a command queue for, and it lands on the last app.
                 navigateToOverview();
@@ -989,5 +994,13 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
 
         /** Callback invoken when a visible overview needs to be hidden. */
         default void onHideOverview(int displayId) { }
+
+        /**
+         * IchthysOS: "Last app" action for recents styles the double overview toggle can't
+         * serve. Returns false when the caller should fall back to the double toggle.
+         */
+        default boolean onSwitchToLastApp(int displayId) {
+            return false;
+        }
     }
 }

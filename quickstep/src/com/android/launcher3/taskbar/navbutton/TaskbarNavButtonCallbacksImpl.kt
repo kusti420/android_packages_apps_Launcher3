@@ -49,4 +49,7 @@ constructor(
     override fun onHideOverview(displayId: Int) {
         commandHelper?.addCommand(HIDE_ALT_TAB, displayId)
     }
+
+    override fun onSwitchToLastApp(displayId: Int): Boolean =
+        commandHelper?.switchToLastAppForSelectedRecents() ?: false
 }

@@ -341,6 +341,9 @@ public abstract class AbsSwipeUpHandler<
     private ThreadedAnimator mParallelRunningAnim;
     private boolean mIsMotionPaused;
     private boolean mHasMotionEverBeenPaused;
+    // IchthysOS: custom recents style (recents_type 1..8) to open once this gesture has settled
+    // back on the app, instead of the stock overview; 0 = none. See calculateEndTarget.
+    private int mSelectedRecentsAfterResume;
 
     private boolean mContinuingLastGesture;
 
@@ -1431,6 +1434,21 @@ public abstract class AbsSwipeUpHandler<
             return LAST_TASK;
         }
 
+        // IchthysOS: with a custom recents style selected (Settings.System recents_type 1..8),
+        // swipe-up-and-hold opens that style instead of the stock overview: the gesture settles
+        // back on the app, and resumeLastTask() opens the style once the recents animation has
+        // finished (starting an activity while it still runs would race the transition).
+        if (endTarget == RECENTS) {
+            final int selectedRecents = OverviewCommandHelper.selectedRecentsType(mContext);
+            if (selectedRecents != 0) {
+                mSelectedRecentsAfterResume = selectedRecents;
+                ActiveGestureProtoLogProxy.logCalculateEndTargetResultAndReason("LAST_TASK",
+                        new ActiveGestureLog.CompoundString(
+                                "custom recents style selected and endTarget = RECENTS"));
+                return LAST_TASK;
+            }
+        }
+
         TaskView nextPageTaskView = mRecentsView != null
                 ? mRecentsView.getNextPageTaskView() : null;
         TaskView currentPageTaskView = mRecentsView != null
@@ -2358,12 +2376,21 @@ public abstract class AbsSwipeUpHandler<
             ActiveGestureProtoLogProxy.logEarlyExitForCanceledAnimation("resumeLastTask");
             return;
         }
+        // IchthysOS: open the custom recents style this gesture was redirected from (see
+        // calculateEndTarget) once the app is back in front.
+        final int selectedRecents = mSelectedRecentsAfterResume;
+        mSelectedRecentsAfterResume = 0;
+        final Context context = mContext;
+        final Runnable showSelectedRecents = selectedRecents == 0 ? null
+                : () -> OverviewCommandHelper.showSelectedRecents(context, selectedRecents);
         if (mRecentsAnimationController != null) {
             mRecentsAnimationController.finish(
                     /* toHome= */ false,
-                    /* onFinishComplete= */ null,
+                    /* onFinishComplete= */ showSelectedRecents,
                     /* reason= */ new ActiveGestureLog.CompoundString(
                             "AbsSwipeUpHandler.resumeLastTask"));
+        } else if (showSelectedRecents != null) {
+            showSelectedRecents.run();
         }
         doLogGesture(LAST_TASK, null);
         reset();

@@ -139,19 +139,20 @@ constructor(
     ): CommandInfo? {
         // IchthysOS recents style (System setting recents_type): 1 = Classic (7.1.1-style
         // vertical card-stack, SystemUI LegacyRecentsActivity), 2 = Slim (side-anchored panel,
-        // SystemUI SlimRecentsActivity), anything else = Stock (Quickstep overview). Only
-        // short-circuit to a SystemUI recents activity for Classic/Slim; for Stock fall through
+        // frameworks/opt/slimrecent, compiled into Quickstep), 3..8 = the card-list styles
+        // (SystemUI OneUiRecentsActivity), anything else = Stock (Quickstep overview). For a
+        // custom style, short-circuit every "show recents" command to it; for Stock fall through
         // to the normal Quickstep overview command flow below.
-        if (type == TOGGLE) {
-            when (recentsType()) {
-                1 -> { launchSystemUiRecents(
-                        "com.android.systemui.recents.LegacyRecentsActivity"); return null }
-                2 -> { toggleSlimRecents(); return null }
-                // 3..8 are the card-list styles: AOSP 7.1.1 cascade, One UI grid / tilt stack /
-                // vertical list / slim list, and the Samsung Grace UX stack. They all share one
-                // activity, which reads recents_type itself to pick the layout.
-                in 3..8 -> { launchSystemUiRecents(
-                        "com.android.systemui.recents.oneui.OneUiRecentsActivity"); return null }
+        // TOGGLE is the recents button / keyboard RECENT_APPS key, SHOW_ALT_TAB is Alt+Tab and
+        // TOGGLE_WITH_FOCUS is Meta+Tab / the keyboard overview key. HIDE_ALT_TAB (Alt released)
+        // only means something to the stock Keyboard Quick Switch, so it is dropped: the custom
+        // recents stays open for the user to pick an app.
+        if (type == TOGGLE || type == SHOW_ALT_TAB || type == TOGGLE_WITH_FOCUS ||
+                type == HIDE_ALT_TAB) {
+            val style = selectedRecentsType(context)
+            if (style != 0) {
+                if (type != HIDE_ALT_TAB) showSelectedRecents(context, style)
+                return null
             }
         }
         if (commandQueue.size >= MAX_QUEUE_SIZE) {
@@ -180,51 +181,15 @@ constructor(
         return command
     }
 
-    // recents_type: 0 = Stock (Quickstep overview), 1 = Classic (legacy vertical list),
-    // 2 = Slim (side-anchored panel), 3 = Cascade (AOSP 7.1.1), 4 = Grid (One UI),
-    // 5 = Tilt stack (One UI), 6 = Vertical list (One UI), 7 = Slim list (One UI),
-    // 8 = Samsung Grace UX stack.
-    private fun recentsType(): Int =
-        Settings.System.getIntForUser(
-            context.contentResolver,
-            "recents_type",
-            0,
-            UserHandle.USER_CURRENT,
-        )
-
-    private fun launchSystemUiRecents(activityClass: String) {
-        try {
-            context.startActivity(
-                Intent()
-                    .setComponent(ComponentName("com.android.systemui", activityClass))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            )
-        } catch (e: Exception) {
-            Log.e("OverviewCommandHelper", "Failed to launch SystemUI recents: $activityClass", e)
-        }
-    }
-
-    // Slim Recents (frameworks/opt/slimrecent) is compiled into Quickstep, so drive its
-    // RecentController directly. Lazily created + started on first use.
-    private var slimRecentController: com.android.systemui.slimrecent.RecentController? = null
-
-    private fun toggleSlimRecents() {
-        // The recents toggle arrives on a binder thread; RecentController's constructor and
-        // its window/animation work create Handlers and touch the view hierarchy, so it must
-        // run on the main (UI) thread with a Looper.
-        com.android.launcher3.util.Executors.MAIN_EXECUTOR.execute {
-            try {
-                var controller = slimRecentController
-                if (controller == null) {
-                    controller = com.android.systemui.slimrecent.RecentController()
-                    controller.onStart(context)
-                    slimRecentController = controller
-                }
-                controller.toggleRecentApps()
-            } catch (e: Exception) {
-                Log.e("OverviewCommandHelper", "Failed to toggle Slim Recents", e)
-            }
-        }
+    /**
+     * IchthysOS: the "Last app" nav-button action. Returns true when it was handled here (Slim),
+     * false when the caller should use the stock double toggle (which Stock, Classic and the
+     * card-list styles all turn into a switch to the previous app).
+     */
+    fun switchToLastAppForSelectedRecents(): Boolean {
+        if (selectedRecentsType(context) != RECENTS_SLIM) return false
+        withSlimRecents(context) { it.switchToLastApp() }
+        return true
     }
 
     @BinderThread
@@ -948,5 +913,91 @@ constructor(
         private const val MAX_QUEUE_SIZE = 3
         private const val QUEUE_WAIT_DURATION_IN_MS = 5000L
         @VisibleForTesting val TOGGLE_PREVIOUS_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(5)
+
+        // IchthysOS recents_type: 0 = Stock (Quickstep overview), 1 = Classic (legacy vertical
+        // list), 2 = Slim (side-anchored panel), 3 = Cascade (AOSP 7.1.1), 4 = Grid (One UI),
+        // 5 = Tilt stack (One UI), 6 = Vertical list (One UI), 7 = Slim list (One UI),
+        // 8 = Samsung Grace UX stack. Read on every request, so a change applies at once.
+        private const val RECENTS_CLASSIC = 1
+        private const val RECENTS_SLIM = 2
+
+        /** IchthysOS: the selected custom recents style (1..8), or 0 for the stock overview. */
+        @JvmStatic
+        fun selectedRecentsType(context: Context): Int {
+            val type =
+                Settings.System.getIntForUser(
+                    context.contentResolver,
+                    "recents_type",
+                    0,
+                    UserHandle.USER_CURRENT,
+                )
+            return if (type in 1..8) type else 0
+        }
+
+        /**
+         * IchthysOS: opens the custom recents style [type] (from [selectedRecentsType]). Used by
+         * the overview commands above and by the swipe-up-and-hold gesture (AbsSwipeUpHandler),
+         * which settles back on the app and then calls this instead of showing the overview.
+         */
+        @JvmStatic
+        fun showSelectedRecents(context: Context, type: Int) {
+            when (type) {
+                RECENTS_CLASSIC ->
+                    launchSystemUiRecents(
+                        context,
+                        "com.android.systemui.recents.LegacyRecentsActivity",
+                    )
+                RECENTS_SLIM -> withSlimRecents(context) { it.toggleRecentApps() }
+                // 3..8 are the card-list styles: AOSP 7.1.1 cascade, One UI grid / tilt stack /
+                // vertical list / slim list, and the Samsung Grace UX stack. They all share one
+                // activity, which reads recents_type itself to pick the layout.
+                in 3..8 ->
+                    launchSystemUiRecents(
+                        context,
+                        "com.android.systemui.recents.oneui.OneUiRecentsActivity",
+                    )
+            }
+        }
+
+        private fun launchSystemUiRecents(context: Context, activityClass: String) {
+            try {
+                context.startActivity(
+                    Intent()
+                        .setComponent(ComponentName("com.android.systemui", activityClass))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to launch SystemUI recents: $activityClass", e)
+            }
+        }
+
+        // Slim Recents (frameworks/opt/slimrecent) is compiled into Quickstep, so drive its
+        // RecentController directly. Lazily created + started on first use, once per process
+        // (it registers receivers and observers, and this helper is re-created on every SysUI
+        // reconnect). Only touched on the main thread.
+        private var slimRecentController: com.android.systemui.slimrecent.RecentController? =
+            null
+
+        private fun withSlimRecents(
+            context: Context,
+            action: (com.android.systemui.slimrecent.RecentController) -> Unit,
+        ) {
+            // Requests arrive on binder threads; RecentController's constructor and its
+            // window/animation work create Handlers and touch the view hierarchy, so it must
+            // run on the main (UI) thread with a Looper.
+            com.android.launcher3.util.Executors.MAIN_EXECUTOR.execute {
+                try {
+                    var controller = slimRecentController
+                    if (controller == null) {
+                        controller = com.android.systemui.slimrecent.RecentController()
+                        controller.onStart(context.applicationContext ?: context)
+                        slimRecentController = controller
+                    }
+                    action(controller)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Slim Recents request failed", e)
+                }
+            }
+        }
     }
 }

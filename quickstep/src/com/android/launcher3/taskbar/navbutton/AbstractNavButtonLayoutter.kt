@@ -64,13 +64,23 @@ abstract class AbstractNavButtonLayoutter(
         // setup back button drawable
         // IchthysOS navBar.style: a code-drawn back key (set by NavbarButtonsViewController) rotates
         // itself from the drawable level, so keep it rather than wrapping it in a RotateDrawable.
+        // IchthysOS: wrap the glyph already on the button (a crDroid icon pack's back icon, set by
+        // NavbarButtonsViewController.addButton) instead of always the AOSP ic_sysbar_back, and
+        // don't re-wrap: a layoutter is built on every layout update, so the button usually
+        // carries the RotateDrawable from the previous one.
         if (
             backButton != null &&
                 backButton.resources != null &&
-                backButton.drawable !is IchthysNavKeyDrawable
+                backButton.drawable !is IchthysNavKeyDrawable &&
+                backButton.drawable !is RotateDrawable
         ) {
+            val glyph =
+                backButton.drawable ?: backButton.context?.getDrawable(R.drawable.ic_sysbar_back)
+            // Detach it first: replacing an ImageView's drawable clears the old one's callback,
+            // which would otherwise cut the glyph off from the wrapper set up below.
+            backButton.setImageDrawable(null)
             val rotateDrawable = RotateDrawable()
-            rotateDrawable.drawable = backButton.context?.getDrawable(R.drawable.ic_sysbar_back)
+            rotateDrawable.drawable = glyph
             rotateDrawable.fromDegrees = 0f
             rotateDrawable.toDegrees = if (Utilities.isRtl(backButton.resources)) 90f else -90f
             backButton.setImageDrawable(rotateDrawable)
