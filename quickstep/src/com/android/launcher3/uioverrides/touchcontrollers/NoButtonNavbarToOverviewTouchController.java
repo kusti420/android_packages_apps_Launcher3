@@ -48,6 +48,7 @@ import com.android.launcher3.taskbar.TaskbarInteractor;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
 import com.android.launcher3.util.VibratorWrapper;
 import com.android.launcher3.views.ScrimColorsEvaluator;
+import com.android.quickstep.OverviewCommandHelper;
 import com.android.quickstep.SystemUiProxy;
 import com.android.quickstep.util.AnimatorControllerWithResistance;
 import com.android.quickstep.util.MotionPauseDetector;
@@ -91,6 +92,13 @@ public class NoButtonNavbarToOverviewTouchController extends PortraitStatesTouch
 
     private final QuickstepLauncher mLauncher;
     private boolean mIsTrackpadSwipe;
+
+    // IchthysOS: custom recents style (Settings.System recents_type 1..8) to open when this
+    // swipe-up-and-hold from the home screen is released while still paused; 0 = none. With a
+    // custom style the hold does not morph home into the stock overview: home stays put (the
+    // swipe plays out like a plain swipe up) and the style opens on release, the same as
+    // AbsSwipeUpHandler does for the gesture over an app.
+    private int mCustomRecentsOnRelease;
 
     /**
      * @param cancelSplitRunnable Called when split placeholder view needs to be cancelled.
@@ -172,6 +180,7 @@ public class NoButtonNavbarToOverviewTouchController extends PortraitStatesTouch
         }
         mStartedOverview = false;
         mReachedOverview = false;
+        mCustomRecentsOnRelease = 0;
         mOverviewResistYAnim = null;
     }
 
@@ -195,11 +204,19 @@ public class NoButtonNavbarToOverviewTouchController extends PortraitStatesTouch
             taskbarInteractor.setShouldDelayLauncherStateAnim(false);
         }
 
+        // IchthysOS: released while still holding with a custom recents style selected.
+        final int customRecents = mCustomRecentsOnRelease != 0 && mMotionPauseDetector.isPaused()
+                ? mCustomRecentsOnRelease : 0;
+        mCustomRecentsOnRelease = 0;
+
         if (mStartedOverview) {
             goToOverviewOrHomeOnDragEnd(velocity);
         } else {
             InteractionJankMonitorWrapper.cancel(Cuj.CUJ_LAUNCHER_APP_SWIPE_TO_RECENTS);
             super.onDragEnd(velocity);
+        }
+        if (customRecents != 0) {
+            OverviewCommandHelper.showSelectedRecents(mLauncher, customRecents);
         }
 
         mMotionPauseDetector.clear();
@@ -231,6 +248,16 @@ public class NoButtonNavbarToOverviewTouchController extends PortraitStatesTouch
 
     private void onMotionPauseDetected() {
         if (mCurrentAnimation == null) {
+            return;
+        }
+        // IchthysOS: with a custom recents style, don't go to the stock overview. Remember the
+        // style and open it when the finger lifts (onDragEnd); the haptic still marks the hold.
+        final int customRecents = OverviewCommandHelper.selectedRecentsType(mLauncher);
+        if (customRecents != 0) {
+            if (mCustomRecentsOnRelease == 0) {
+                mCustomRecentsOnRelease = customRecents;
+                VibratorWrapper.INSTANCE.get(mLauncher).vibrate(OVERVIEW_HAPTIC);
+            }
             return;
         }
         mNormalToHintOverviewScrimAnimator = null;

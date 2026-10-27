@@ -826,10 +826,14 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
             case ACTION_APP_SWITCH:
                 navigateToOverview();
                 return true;
-            case ACTION_SEARCH:
             case ACTION_IN_APP_SEARCH:
                 mSystemUiProxy.onKeyEvent(KeyEvent.KEYCODE_SEARCH, mDisplayId);
                 return true;
+            case ACTION_SEARCH:
+                // IchthysOS: "Search assistant" is an assistant surface, which this build does
+                // not have; injecting KEYCODE_SEARCH only ever did in-app search, so the option
+                // is gone from crDroidSettings' navbar_keys_action_entries and a stored value
+                // (which the picker now shows as "Nothing") does nothing, like VOICE_SEARCH.
             case ACTION_VOICE_SEARCH:
                 // IchthysOS: no assistant / voice search on this build. The option is gone from
                 // crDroidSettings' pickers, so this is only reachable from a value stored before

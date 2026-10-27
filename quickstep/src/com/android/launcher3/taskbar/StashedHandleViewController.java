@@ -29,8 +29,11 @@ import android.animation.ValueAnimator;
 import android.app.TaskInfo;
 import android.content.Context;
 import android.content.res.Resources;
+import android.database.ContentObserver;
 import android.graphics.Outline;
 import android.graphics.Rect;
+import android.os.UserHandle;
+import android.provider.Settings;
 import android.view.View;
 import android.view.ViewOutlineProvider;
 
@@ -72,7 +75,18 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
     public static final int ALPHA_INDEX_NUDGED = 4;
     public static final int ALPHA_INDEX_ALL_SET_TRANSITION = 5;
     public static final int ALPHA_INDEX_CUEBAR_HIDDEN = 6;
-    private static final int NUM_ALPHA_CHANNELS = 7;
+    // IchthysOS: the user's gesture pill styling (hide / opacity), see applyPillStyle().
+    public static final int ALPHA_INDEX_ICHTHYS_PILL_STYLE = 7;
+    private static final int NUM_ALPHA_CHANNELS = 8;
+
+    // IchthysOS: gesture pill styling (Settings.System, crDroidSettings Navigation page). These
+    // were only read by SystemUI's NavigationHandle, but on this phone the Launcher taskbar draws
+    // the pill and SystemUI's navigation bar is never created, so the rows did nothing (and were
+    // hidden). Same keys, ranges and defaults as NavigationHandle.
+    private static final String KEY_PILL_HIDE = "ichthys_nav_handle_hide";
+    private static final String KEY_PILL_WIDTH = "ichthys_nav_handle_width";
+    private static final String KEY_PILL_THICKNESS = "ichthys_nav_handle_thickness";
+    private static final String KEY_PILL_OPACITY = "ichthys_nav_handle_opacity";
 
     // Values for long press animations, picked to most closely match navbar spec.
     private static final float SCALE_TOUCH_ANIMATION_SHRINK = 0.85f;
@@ -92,6 +106,11 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
     private final StashedHandleView mStashedHandleView;
     private int mStashedHandleWidth;
     private int mStashedHandleHeight;
+    // IchthysOS: the pill size before the user's width / thickness scale (applyPillStyle()).
+    private int mBaseStashedHandleWidth;
+    private int mBaseStashedHandleHeight;
+    @Nullable
+    private ContentObserver mPillStyleObserver;
     @Nullable
     private RegionSamplingHelper mRegionSamplingHelper;
     private final MultiValueAlpha mTaskbarStashedHandleAlpha;
@@ -158,6 +177,27 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
             mStashedHandleWidth = Math.round(108 * density);
             mStashedHandleHeight = Math.round(5 * density);
             mStashedHandleView.setIchthysGestures(true, IchthysNavStyle.tokens(activity));
+        }
+        mBaseStashedHandleWidth = mStashedHandleWidth;
+        mBaseStashedHandleHeight = mStashedHandleHeight;
+        if (activity.isPhoneGestureNavMode()) {
+            // IchthysOS: the user's pill styling, applied live (outline + alpha, no recreate).
+            applyPillStyle(activity);
+            mPillStyleObserver = new ContentObserver(
+                    Executors.getTaskbarUiThread().getHandler()) {
+                @Override
+                public void onChange(boolean selfChange) {
+                    final TaskbarActivityContext context = mActivityRef.get();
+                    if (context != null) {
+                        applyPillStyle(context);
+                    }
+                }
+            };
+            for (String key : new String[] {KEY_PILL_HIDE, KEY_PILL_WIDTH, KEY_PILL_THICKNESS,
+                    KEY_PILL_OPACITY}) {
+                activity.getContentResolver().registerContentObserver(
+                        Settings.System.getUriFor(key), false, mPillStyleObserver);
+            }
         }
         int taskbarBottomMargin = deviceProfile.getTaskbarProfile().getBottomMargin();
         mStashedHandleView.getLayoutParams().height = mTaskbarSize + taskbarBottomMargin;
@@ -240,7 +280,36 @@ public class StashedHandleViewController implements TaskbarControllers.LoggableT
     }
 
 
+    /**
+     * IchthysOS: applies ichthys_nav_handle_{hide,width,thickness,opacity} to the gesture pill:
+     * width and thickness scale its outline (and so the "gestures" style's accent segment, which
+     * is drawn inside the outline bounds), hide and opacity go through a dedicated alpha channel.
+     */
+    private void applyPillStyle(Context context) {
+        final android.content.ContentResolver cr = context.getContentResolver();
+        final boolean hidden = Settings.System.getIntForUser(cr, KEY_PILL_HIDE, 0,
+                UserHandle.USER_CURRENT) != 0;
+        final float widthScale = Math.max(30, Math.min(150, Settings.System.getIntForUser(cr,
+                KEY_PILL_WIDTH, 100, UserHandle.USER_CURRENT))) / 100f;
+        final float thicknessScale = Math.max(50, Math.min(250, Settings.System.getIntForUser(cr,
+                KEY_PILL_THICKNESS, 100, UserHandle.USER_CURRENT))) / 100f;
+        final float opacity = Math.max(10, Math.min(100, Settings.System.getIntForUser(cr,
+                KEY_PILL_OPACITY, 100, UserHandle.USER_CURRENT))) / 100f;
+        mStashedHandleWidth = Math.max(1, Math.round(mBaseStashedHandleWidth * widthScale));
+        mStashedHandleHeight = Math.max(1, Math.round(mBaseStashedHandleHeight * thicknessScale));
+        mTaskbarStashedHandleAlpha.get(ALPHA_INDEX_ICHTHYS_PILL_STYLE)
+                .setValue(hidden ? 0f : opacity);
+        mStashedHandleView.invalidateOutline();
+    }
+
     public void onDestroy() {
+        if (mPillStyleObserver != null) {
+            final TaskbarActivityContext activity = mActivityRef.get();
+            if (activity != null) {
+                activity.getContentResolver().unregisterContentObserver(mPillStyleObserver);
+            }
+            mPillStyleObserver = null;
+        }
         if (mRegionSamplingHelper != null) {
             mRegionSamplingHelper.stopAndDestroy();
         }

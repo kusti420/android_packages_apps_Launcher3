@@ -17,8 +17,13 @@
 package com.android.quickstep.views
 
 import android.animation.AnimatorSet
+import android.app.ActivityManager
 import android.app.ActivityTaskManager.INVALID_TASK_ID
+import android.content.Context
+import android.os.UserHandle
+import android.provider.Settings
 import android.util.Log
+import android.view.Display
 import android.view.View
 import androidx.core.animation.addListener
 import androidx.core.graphics.toRectF
@@ -350,7 +355,9 @@ constructor(
 
                     // Remove all the task views now
                     finishRecentsAnimation(/* toHome */ true, /* shouldPip */ false) {
-                        uiHelperExecutor.execute { activityManagerWrapper.removeAllRecentTasks() }
+                        // IchthysOS: keep the apps parked in Backstage (see below).
+                        val context = recentsView.context.applicationContext
+                        uiHelperExecutor.execute { removeAllRecentTasksKeepingBackstage(context) }
                         removeAllTaskViews()
                         if (!mUtils.isInDesktopFirstMode()) {
                             startHome()
@@ -361,6 +368,52 @@ constructor(
                 }
             }
             .start()
+    }
+
+    /**
+     * IchthysOS: "Clear all" without killing Backstage apps. Backstage (IchthysBackstageService)
+     * parks apps on a private virtual display, which this overview does not list, and
+     * removeAllRecentTasks() (IActivityTaskManager.removeAllVisibleRecentTasks) removes, and so
+     * kills, every recent task on any display: Clear all used to kill apps the user had chosen
+     * to keep running and could not even see here. Slim, Classic and the card-list styles keep
+     * them too. With nothing in Backstage this is exactly the stock call.
+     */
+    private fun removeAllRecentTasksKeepingBackstage(context: Context) {
+        try {
+            val parkedPackages =
+                Settings.Secure.getStringForUser(
+                        context.contentResolver,
+                        BACKSTAGE_PACKAGES,
+                        UserHandle.USER_CURRENT,
+                    )
+                    ?.split(',')
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotEmpty() }
+                    ?.toSet()
+                    .orEmpty()
+            val tasks =
+                context
+                    .getSystemService(ActivityManager::class.java)
+                    ?.getRecentTasks(
+                        ActivityManager.getMaxRecentTasksStatic(),
+                        ActivityManager.RECENT_IGNORE_UNAVAILABLE,
+                    )
+                    .orEmpty()
+            val isBackstage = { info: ActivityManager.RecentTaskInfo ->
+                val pkg = info.baseIntent?.component?.packageName
+                (info.displayId != Display.DEFAULT_DISPLAY &&
+                    info.displayId != Display.INVALID_DISPLAY) ||
+                    (pkg != null && parkedPackages.contains(pkg))
+            }
+            if (tasks.none(isBackstage)) {
+                activityManagerWrapper.removeAllRecentTasks()
+                return
+            }
+            tasks.filterNot(isBackstage).forEach { activityManagerWrapper.removeTask(it.taskId) }
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Clear all: could not filter Backstage tasks, removing all", e)
+            activityManagerWrapper.removeAllRecentTasks()
+        }
     }
 
     fun dismissTask(taskId: Int, removeTask: Boolean) {
@@ -1476,5 +1529,7 @@ constructor(
         private const val RECENTS_SCALE_SPRING_MULTIPLIER = 1000f
         private const val DEFAULT_DISMISS_THRESHOLD_FRACTION = 0.5f
         private const val SPEED_UP_STIFFNESS = 100_000f
+        // IchthysOS: Settings.Secure key of IchthysBackstageService (comma-separated packages).
+        private const val BACKSTAGE_PACKAGES = "ichthys_backstage_pkgs"
     }
 }

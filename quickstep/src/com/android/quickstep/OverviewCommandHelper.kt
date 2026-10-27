@@ -147,8 +147,11 @@ constructor(
         // TOGGLE_WITH_FOCUS is Meta+Tab / the keyboard overview key. HIDE_ALT_TAB (Alt released)
         // only means something to the stock Keyboard Quick Switch, so it is dropped: the custom
         // recents stays open for the user to pick an app.
-        if (type == TOGGLE || type == SHOW_ALT_TAB || type == TOGGLE_WITH_FOCUS ||
-                type == HIDE_ALT_TAB) {
+        // The custom styles are main-display UIs: a command for another display (a connected
+        // external screen, or one of several when a command fans out to every display) keeps the
+        // stock overview there instead of opening the style on the phone screen again.
+        if (displayId == DEFAULT_DISPLAY && (type == TOGGLE || type == SHOW_ALT_TAB ||
+                type == TOGGLE_WITH_FOCUS || type == HIDE_ALT_TAB)) {
             val style = selectedRecentsType(context)
             if (style != 0) {
                 if (type != HIDE_ALT_TAB) showSelectedRecents(context, style)
