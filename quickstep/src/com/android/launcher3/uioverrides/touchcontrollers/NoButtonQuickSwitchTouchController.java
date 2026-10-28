@@ -80,6 +80,7 @@ import com.android.launcher3.touch.BothAxesSwipeDetector;
 import com.android.launcher3.uioverrides.QuickstepLauncher;
 import com.android.launcher3.util.TouchController;
 import com.android.launcher3.util.VibratorWrapper;
+import com.android.quickstep.OverviewCommandHelper;
 import com.android.quickstep.SystemUiProxy;
 import com.android.quickstep.util.AnimatorControllerWithResistance;
 import com.android.quickstep.util.LayoutUtils;
@@ -339,7 +340,11 @@ public class NoButtonQuickSwitchTouchController implements TouchController,
         boolean horizontalFling = mSwipeDetector.isFling(velocity.x);
         boolean verticalFling = mSwipeDetector.isFling(velocity.y);
         boolean noFling = !horizontalFling && !verticalFling;
-        if (mMotionPauseDetector.isPaused() && noFling) {
+        // IchthysOS: a custom recents style (recents_type) opens instead of the stock overview,
+        // as from the nav bar gesture (NoButtonNavbarToOverviewTouchController).
+        final int customRecents = mMotionPauseDetector.isPaused() && noFling
+                ? OverviewCommandHelper.selectedRecentsType(mLauncher) : 0;
+        if (mMotionPauseDetector.isPaused() && noFling && customRecents == 0) {
             // Going to Overview.
             InteractionJankMonitorWrapper.cancel(Cuj.CUJ_LAUNCHER_QUICK_SWITCH);
 
@@ -386,6 +391,11 @@ public class NoButtonQuickSwitchTouchController implements TouchController,
             targetState = velocity.x > 0 ? QUICK_SWITCH_FROM_HOME : NORMAL;
         } else if (verticalFling) {
             targetState = velocity.y > 0 ? QUICK_SWITCH_FROM_HOME : NORMAL;
+        } else if (customRecents != 0) {
+            // Paused for the overview with a custom recents style: home settles back and the
+            // chosen style opens.
+            targetState = NORMAL;
+            OverviewCommandHelper.showSelectedRecents(mLauncher, customRecents);
         } else {
             // If user isn't flinging, just snap to the closest state.
             boolean passedHorizontalThreshold = mXOverviewAnim.getInterpolatedProgress() > 0.5f;

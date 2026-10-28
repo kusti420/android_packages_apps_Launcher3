@@ -254,6 +254,8 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
 
     private boolean mTorchEnabled;
     private boolean mTorchCallbackRegistered;
+    /** IchthysOS: kept to unregister in onDestroy (each rebuilt controller used to stay alive). */
+    private CameraManager.TorchCallback mTorchCallback;
 
     private final int mDisplayId;
     private final TaskbarNavButtonCallbacks mCallbacks;
@@ -515,6 +517,15 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
         cancelPendingSingleTaps();
         // Before mControllers is cleared -- unregistering needs the context.
         unregisterActionSettingsObserver();
+        if (mTorchCallback != null && mControllers != null) {
+            final CameraManager cameraManager = mControllers.getTaskbarActivityContext()
+                    .getSystemService(CameraManager.class);
+            if (cameraManager != null) {
+                cameraManager.unregisterTorchCallback(mTorchCallback);
+            }
+            mTorchCallback = null;
+            mTorchCallbackRegistered = false;
+        }
         mStatsLogManager = null;
         mControllers = null;
     }
@@ -946,7 +957,7 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
                 // Keeps mTorchEnabled honest when something else (QS tile, camera app) changes
                 // the torch. The very first press assumes "off", which is right nearly always and
                 // self-corrects from the callback afterwards.
-                cameraManager.registerTorchCallback(new CameraManager.TorchCallback() {
+                mTorchCallback = new CameraManager.TorchCallback() {
                     @Override
                     public void onTorchModeChanged(String cameraId, boolean enabled) {
                         mTorchEnabled = enabled;
@@ -956,7 +967,8 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
                     public void onTorchModeUnavailable(String cameraId) {
                         mTorchEnabled = false;
                     }
-                }, mHandler);
+                };
+                cameraManager.registerTorchCallback(mTorchCallback, mHandler);
                 mTorchCallbackRegistered = true;
             }
             String torchCameraId = null;
