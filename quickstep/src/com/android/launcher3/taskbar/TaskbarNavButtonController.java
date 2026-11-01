@@ -37,7 +37,11 @@ import static com.android.systemui.shared.system.ActivityManagerWrapper.CLOSE_SY
 import static com.android.systemui.shared.system.ActivityManagerWrapper.CLOSE_SYSTEM_WINDOWS_REASON_RECENTS;
 import static com.android.systemui.shared.system.QuickStepContract.SYSUI_STATE_SCREEN_PINNING;
 
+import android.app.ActivityManager;
+import android.app.WindowConfiguration;
 import android.app.contextualsearch.ContextualSearchConfig;
+import android.content.ComponentName;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.database.ContentObserver;
@@ -52,6 +56,8 @@ import android.os.Handler;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.provider.MediaStore;
+import android.provider.Settings;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
@@ -59,6 +65,7 @@ import android.view.SoundEffectConstants;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.WindowManager;
+import android.widget.Toast;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.Nullable;
@@ -75,12 +82,15 @@ import com.android.quickstep.SystemUiProxy;
 import com.android.quickstep.TaskUtils;
 import com.android.quickstep.util.ContextualSearchInvoker;
 import com.android.systemui.contextualeducation.GestureType;
+import com.android.systemui.shared.system.ActivityManagerWrapper;
 import com.android.systemui.shared.system.QuickStepContract;
 import com.android.systemui.shared.system.QuickStepContract.SystemUiStateFlags;
 
 import java.io.PrintWriter;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Controller for 3 button mode in the taskbar.
@@ -222,6 +232,14 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
     private static final int ACTION_NOTIFICATIONS_PANEL = 17;
     private static final int ACTION_EXPAND_QS_PANEL = 18;
     private static final int ACTION_RINGER_MODES = 19;
+    // IchthysOS: the app on screen goes to Backstage, or comes out of it (DeviceKeysConstants
+    // .Action.BACKSTAGE, kusti420/ichthysos-tracker#38).
+    private static final int ACTION_BACKSTAGE = 20;
+
+    // IchthysOS: Backstage's state, Settings.Secure, reconciled by IchthysBackstageService; the
+    // same key and cap the Backstage tile and crDroidSettings use.
+    private static final String BACKSTAGE_PACKAGES = "ichthys_backstage_pkgs";
+    private static final int BACKSTAGE_MAX_APPS = 3;
 
     // Defaults. IchthysOS has no assistant / voice search, so home long-press defaults to NOTHING
     // rather than reproducing stock's VOICE_SEARCH. A fresh install therefore never lands on an
@@ -748,7 +766,7 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
                 final String value = cursor.getString(0);
                 if (value != null) {
                     final int action = Integer.parseInt(value);
-                    return (action < ACTION_NOTHING || action > ACTION_RINGER_MODES)
+                    return (action < ACTION_NOTHING || action > ACTION_BACKSTAGE)
                             ? ACTION_NOTHING : action;
                 }
             }
@@ -890,6 +908,8 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
             case ACTION_EXPAND_QS_PANEL:
                 mSystemUiProxy.toggleQuickSettingsPanel();
                 return true;
+            case ACTION_BACKSTAGE:
+                return toggleBackstage();
             case ACTION_SPLIT_SCREEN:
             case ACTION_KILL_APP:
             case ACTION_CLEAR_ALL_NOTIFICATIONS:
@@ -902,6 +922,59 @@ public class TaskbarNavButtonController implements TaskbarControllers.LoggableTa
                 Log.w(TAG, "Nav button action " + action + " is not supported on this device");
                 return false;
         }
+    }
+
+    /**
+     * IchthysOS: sends the app on screen to Backstage, or takes it out if it is already there.
+     * Only the Settings.Secure list is written; IchthysBackstageService does the moving. Returns
+     * false with the launcher, recents or nothing sendable on screen, so the button keeps its
+     * stock behaviour.
+     */
+    private boolean toggleBackstage() {
+        final Context context = getTaskbarContext();
+        if (context == null) {
+            return false;
+        }
+        final ActivityManager.RunningTaskInfo task =
+                ActivityManagerWrapper.getInstance().getRunningTask();
+        if (task == null || task.getActivityType() == WindowConfiguration.ACTIVITY_TYPE_HOME
+                || task.getActivityType() == WindowConfiguration.ACTIVITY_TYPE_RECENTS) {
+            return false;
+        }
+        final ComponentName base = task.baseActivity != null ? task.baseActivity
+                : task.topActivity;
+        final String pkg = base != null ? base.getPackageName() : null;
+        // Backstage starts and restores apps through their launcher entry.
+        if (pkg == null || pkg.equals(context.getPackageName())
+                || context.getPackageManager().getLaunchIntentForPackage(pkg) == null) {
+            return false;
+        }
+        final ContentResolver resolver = context.getContentResolver();
+        final List<String> pkgs = new ArrayList<>();
+        final String stored = Settings.Secure.getString(resolver, BACKSTAGE_PACKAGES);
+        if (!TextUtils.isEmpty(stored)) {
+            for (String s : stored.split(",")) {
+                s = s.trim();
+                if (!s.isEmpty() && !pkgs.contains(s)) {
+                    pkgs.add(s);
+                }
+            }
+        }
+        if (!pkgs.remove(pkg)) {
+            if (pkgs.size() >= BACKSTAGE_MAX_APPS) {
+                Toast.makeText(context, R.string.ichthys_backstage_full, Toast.LENGTH_LONG).show();
+                return true;
+            }
+            pkgs.add(pkg);
+        }
+        try {
+            Settings.Secure.putString(resolver, BACKSTAGE_PACKAGES,
+                    pkgs.isEmpty() ? null : TextUtils.join(",", pkgs));
+        } catch (SecurityException e) {
+            Log.w(TAG, "Could not write " + BACKSTAGE_PACKAGES, e);
+            return false;
+        }
+        return true;
     }
 
     private boolean launchCamera() {

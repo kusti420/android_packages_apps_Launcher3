@@ -441,4 +441,8 @@
     </string>
     <!-- Description for the Ambient Cue accessibility action label for autofilling. [CHAR LIMIT=NONE] -->
     <string name="ambient_cue_autofill_action">autofill</string>
+
+    <!-- IchthysOS: the "Send to Backstage" nav button action, when Backstage already holds its
+         3 apps (same wording as SystemUI's ichthys_backstage_tile_full). [CHAR LIMIT=NONE] -->
+    <string name="ichthys_backstage_full">Backstage holds 3 apps. Bring one back or stop it first.</string>
 </resources>
