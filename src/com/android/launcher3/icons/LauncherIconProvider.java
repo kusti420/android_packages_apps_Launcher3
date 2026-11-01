@@ -69,8 +69,11 @@ public class LauncherIconProvider extends IconProvider {
     @Override
     public void updateSystemState() {
         super.updateSystemState();
+        // IchthysOS: the accent is part of the cached icons' state, so an accent change redraws
+        // icons whose background is the system accent instead of serving the old bitmaps.
         mSystemState = mSystemState.withTheme(
-                mThemeManager.getIconState().getThemeCode(),
+                mThemeManager.getIconState().getThemeCode() + "|a"
+                        + Integer.toHexString(mThemeManager.getIconState().getAccent()),
                 mThemeManager.getIconState().isCircle());
     }
 

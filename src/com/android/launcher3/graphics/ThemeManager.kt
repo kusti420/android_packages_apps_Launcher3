@@ -115,8 +115,12 @@ constructor(
         val newState = parseIconState(iconState)
         val oldState = iconState
         if (newState == oldState) return
+        // IchthysOS: an accent change too: adaptive icons whose background is the system accent
+        // (Settings' own) were cached as bitmaps and kept the old colour on the home screen while
+        // the app's launch animation showed the new one.
         val hasThemedChanged =
-            newState.themeCode != oldState.themeCode || newState.isCircle != oldState.isCircle
+            newState.themeCode != oldState.themeCode || newState.isCircle != oldState.isCircle ||
+                newState.accent != oldState.accent
         iconState = newState
         if (hasThemedChanged) {
             // trigger listeners only for theme change, not shape change
@@ -201,6 +205,7 @@ constructor(
             shapeRadius = shapeModel?.shapeRadius ?: DEFAULT_ICON_RADIUS,
             themeCode = themeCode,
             fileShape = fileShape,
+            accent = context.resources.getColor(android.R.color.system_accent1_500, null),
         )
     }
 
@@ -215,6 +220,8 @@ constructor(
         val folderShape: ShapeDelegate,
         val shapeRadius: Float,
         val fileShape: ShapeDelegate,
+        /** IchthysOS: the system accent the icons were drawn with (see verifyIconState). */
+        val accent: Int = 0,
     ) {
         val iconShapeInfo = IconShapeInfo.fromPath(iconShape.getPath(), DEFAULT_PATH_SIZE_INT)
     }
